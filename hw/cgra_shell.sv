@@ -5,12 +5,7 @@ module cgra_shell
   input logic	[511:0] data_in,
   input logic valid_in,
   output logic [511:0] data_out,
-  output logic	valid_out,
-  
-  
-  
-  input logic conf_in,
-  input logic count_in
+  output logic	valid_out
 );
 
 	wire available_write;

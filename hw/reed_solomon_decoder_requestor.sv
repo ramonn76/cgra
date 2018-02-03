@@ -11,7 +11,7 @@ module reed_solomon_decoder_requestor
   input  logic           clk,
   input  logic           reset,
   input  logic [31:0]    hc_control,
-  input  t_ccip_clAddr   hc_dsm_base,
+  input  t_hc_address   hc_dsm_base,
   input  t_hc_buffer     hc_buffer[HC_BUFFER_SIZE],
   input  logic [511:0]     data_in,
   input  logic           valid_in,
@@ -55,31 +55,12 @@ module reed_solomon_decoder_requestor
   // send data to reed_solomon_decoder
   //
   
+  assign valid_out = (reset) ? 1'b0 : ((counter > 0) ? 1'b1 : 1'b0);
 
-  logic [3:0] wait_module = 4'h0;
-
+  assign deq_en = valid_out;
+	
   assign data_out = deq_data;
-
-  always_ff@(posedge clk or posedge reset) begin
-    if (reset) begin
-      deq_en      <= '0;
-      valid_out   <= '0;
-      wait_module <= '0;
-    end
-    else begin
-      if ((counter > 0) && (wait_module == '0)) begin
-        deq_en      <= 1'b1;
-        valid_out   <= 1'b1;
-        wait_module <= 4'hc;
-      end
-      else begin
-        deq_en      <= 1'b0;
-        valid_out   <= 1'b0;
-        wait_module <= (wait_module != '0) ? wait_module - 4'h1 : '0;
-      end
-    end
-  end
-
+	
   //
   // read state FSM
   //
@@ -144,7 +125,7 @@ module reed_solomon_decoder_requestor
           end
           else if (!ccip_rx.c0TxAlmFull) begin
             rd_hdr.cl_len  = eCL_LEN_1;
-            rd_hdr.address = hc_buffer[1].address + rd_offset;
+            rd_hdr.address = hc_buffer[2].address + rd_offset;
 
             ccip_c0_tx.valid <= 1'b1;
             ccip_c0_tx.hdr   <= rd_hdr;
@@ -193,7 +174,7 @@ module reed_solomon_decoder_requestor
         if (cnt_request >= REED_SOLOMON_DECODER_FIFO_DEPTH) begin
           rd_next_state = S_RD_WAIT;
         end
-        else if (!ccip_rx.c0TxAlmFull && ((rd_offset + 1) == hc_buffer[1].size)) begin
+        else if (!ccip_rx.c0TxAlmFull && ((rd_offset + 1) == hc_buffer[2].size)) begin
           rd_next_state = S_RD_FINISH;
         end
       end
@@ -239,18 +220,6 @@ module reed_solomon_decoder_requestor
 
   t_ccip_c1_ReqMemHdr wr_hdr;
 
-  logic [511:0] data;
-
-  always_ff @(posedge clk or posedge reset) begin
-    if (reset) begin
-      data <= '0;
-    end
-    else begin
-      if (valid_in) begin
-        data <= data_in;
-      end
-    end
-  end
 
   // Receive data (write responses).
   always_ff @(posedge clk or posedge reset) begin
@@ -289,13 +258,13 @@ module reed_solomon_decoder_requestor
 
       S_WR_DATA:
         begin
-          if (!ccip_rx.c1TxAlmFull) begin
+          if (!ccip_rx.c1TxAlmFull && valid_in) begin
             wr_hdr.address = hc_buffer[0].address + wr_offset;
             wr_hdr.sop = 1'b1;
 
             ccip_c1_tx.hdr   <= wr_hdr;
             ccip_c1_tx.valid <= 1'b1;
-            ccip_c1_tx.data  <= t_ccip_clData'(data);
+            ccip_c1_tx.data  <= t_ccip_clData'(data_in);
             wr_offset        <= t_ccip_clAddr'(wr_offset + 1);
           end
           else begin
@@ -306,7 +275,7 @@ module reed_solomon_decoder_requestor
       S_WR_FINISH_1:
         begin
           if (!ccip_rx.c1TxAlmFull && (wr_rsp_cnt == hc_buffer[0].size)) begin
-            wr_hdr.address = hc_dsm_base + 1;
+            wr_hdr.address = hc_dsm_base;
             wr_hdr.sop = 1'b1;
 
             ccip_c1_tx.hdr   <= wr_hdr;
@@ -343,24 +312,14 @@ module reed_solomon_decoder_requestor
       S_WR_IDLE:
         begin
           if (hc_control == HC_CONTROL_START) begin
-            wr_next_state = S_WR_WAIT;
-          end
-        end
-
-      S_WR_WAIT:
-        begin
-          if (valid_in) begin
-            wr_next_state <= S_WR_DATA;
-          end
-          else if (wr_offset == hc_buffer[0].size) begin
-            wr_next_state <= S_WR_FINISH_1;
+            wr_next_state = S_WR_DATA;
           end
         end
 
       S_WR_DATA:
         begin
-          if (!ccip_rx.c1TxAlmFull) begin
-            wr_next_state = S_WR_WAIT;
+          if (!ccip_rx.c1TxAlmFull && valid_in) begin
+            wr_next_state = S_WR_FINISH_1;
           end
         end
 

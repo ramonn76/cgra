@@ -12,8 +12,7 @@ package reed_solomon_decoder_pkg;
   parameter HC_CONTROL             = 16'h118; // 32b - RW  Control to start n stop the test
 
   parameter HC_BUFFER_BASE_ADDRESS = 16'h120;
-  parameter HC_BUFFER_SIZE         = 2;
-
+  parameter HC_BUFFER_SIZE         = 3;   // ORIGINAL VALUE = 2
   // HC_CONTROL actions
   parameter HC_CONTROL_ASSERT_RST   = 32'h0000;
   parameter HC_CONTROL_DEASSERT_RST = 32'h0001;
@@ -21,9 +20,10 @@ package reed_solomon_decoder_pkg;
   parameter HC_CONTROL_STOP         = 32'h0007;
 
   typedef logic [31:0] t_hc_control;
+  typedef logic [63:0] t_hc_address;
 
   typedef struct packed {
-    t_ccip_clAddr address;
+    t_hc_address address;
     logic [31:0]  size;
   } t_hc_buffer;
 
@@ -45,8 +45,10 @@ package reed_solomon_decoder_pkg;
     t_ccip_c0_ReqMmioHdr mmio_req_hdr;
     t_ccip_mmioAddr top_addr;
 
-    is_write = rx_mmio_channel.mmioWrValid;
     mmio_req_hdr = t_ccip_c0_ReqMmioHdr'(rx_mmio_channel.hdr);
+
+    is_write = rx_mmio_channel.mmioWrValid & (mmio_req_hdr.address < 'h400);
+
     top_addr = 16'h120 + 16'h10*HC_BUFFER_SIZE + 16'h8;
 
     has_sel = is_write &&
@@ -61,9 +63,9 @@ package reed_solomon_decoder_pkg;
   function logic hc_control_sel(input t_if_ccip_c0_Rx rx_mmio_channel);
     logic is_write;
     t_ccip_c0_ReqMmioHdr mmio_req_hdr;
-
-    is_write = rx_mmio_channel.mmioWrValid;
     mmio_req_hdr = t_ccip_c0_ReqMmioHdr'(rx_mmio_channel.hdr);
+    if (mmio_req_hdr.address!='0) $display("\n\n ### DEBUG MMIO_REQ_HDR.ADDRESS: %h ###\n### DEBUG MMIO_REQ_HDR.DATA: %h ### \n\n", mmio_req_hdr.address << 2, rx_mmio_channel.data[63:0]) ; 
+    is_write = rx_mmio_channel.mmioWrValid & (mmio_req_hdr.address < 'h400);
 
     return is_write && (mmio_req_hdr.address == HC_CONTROL >> 2);
   endfunction : hc_control_sel
@@ -72,8 +74,8 @@ package reed_solomon_decoder_pkg;
     logic is_write;
     t_ccip_c0_ReqMmioHdr mmio_req_hdr;
 
-    is_write = rx_mmio_channel.mmioWrValid;
-    mmio_req_hdr = t_ccip_c0_ReqMmioHdr'(rx_mmio_channel.hdr);
+     mmio_req_hdr = t_ccip_c0_ReqMmioHdr'(rx_mmio_channel.hdr);
+    is_write = rx_mmio_channel.mmioWrValid & (mmio_req_hdr.address < 'h400);
 
     return is_write && (mmio_req_hdr.address == HC_DSM_BASE_LOW >> 2);
   endfunction : hc_dsm_sel
@@ -88,7 +90,6 @@ package reed_solomon_decoder_pkg;
 
   typedef enum logic [2:0] {
     S_RD_IDLE,
-    S_RD_FETCH_KEY,
     S_RD_FETCH,
     S_RD_WAIT,
     S_RD_FINISH

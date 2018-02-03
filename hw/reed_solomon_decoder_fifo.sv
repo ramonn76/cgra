@@ -42,6 +42,7 @@ module reed_solomon_decoder_fifo
     end
     else begin
       if (enq_en && not_full) begin
+	$display("\n\n\n CL ARRIVING \n\n\n: %h", enq_data); 
         wr_pointer <= wr_pointer + 1;
       end
     end
