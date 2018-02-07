@@ -104,11 +104,13 @@ module reed_solomon_decoder_requestor
     end
   end
 
+  logic[1:0] index; // buffer index, select data and program
+
   always_ff@(posedge clk or posedge reset) begin
     if (reset) begin
       ccip_c0_tx.valid    <= 1'b0;
       rd_offset           <= '0;
-
+      index               <= 2;
       rd_hdr = t_ccip_c0_ReqMemHdr'(0);
     end
     else begin
@@ -125,7 +127,7 @@ module reed_solomon_decoder_requestor
           end
           else if (!ccip_rx.c0TxAlmFull) begin
             rd_hdr.cl_len  = eCL_LEN_1;
-            rd_hdr.address = hc_buffer[2].address + rd_offset;
+            rd_hdr.address = hc_buffer[index].address + rd_offset;
 
             ccip_c0_tx.valid <= 1'b1;
             ccip_c0_tx.hdr   <= rd_hdr;
@@ -144,6 +146,9 @@ module reed_solomon_decoder_requestor
       S_RD_FINISH:
         begin
           ccip_c0_tx.valid <= 1'b0;
+          rd_hdr = t_ccip_c0_ReqMemHdr'(0);
+          rd_offset           <= '0;
+          if (index == 2) index <= 1;
         end
       endcase
     end
@@ -174,7 +179,7 @@ module reed_solomon_decoder_requestor
         if (cnt_request >= REED_SOLOMON_DECODER_FIFO_DEPTH) begin
           rd_next_state = S_RD_WAIT;
         end
-        else if (!ccip_rx.c0TxAlmFull && ((rd_offset + 1) == hc_buffer[2].size)) begin
+        else if (!ccip_rx.c0TxAlmFull && ((rd_offset + 1) == hc_buffer[index].size)) begin
           rd_next_state = S_RD_FINISH;
         end
       end
@@ -185,6 +190,11 @@ module reed_solomon_decoder_requestor
           rd_next_state = S_RD_FETCH;
         end
       end
+      
+    S_RD_FINISH:
+        begin
+            if(index == 2) rd_next_state = S_RD_FETCH;
+        end
 
     endcase
   end
